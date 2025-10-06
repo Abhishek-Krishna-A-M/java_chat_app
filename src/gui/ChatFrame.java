@@ -18,7 +18,6 @@ public class ChatFrame extends JFrame {
     private MessagePanel messagePanel;
     private JTextField messageField;
     private JButton sendButton;
-    private JButton attachButton;
     private JLabel statusLabel;
     private JList<String> userList;
     private DefaultListModel<String> userListModel;
@@ -49,8 +48,6 @@ public class ChatFrame extends JFrame {
         messageField.setToolTipText("Type a message...");
 
         sendButton = new JButton("Send");
-        attachButton = new JButton("📎");
-        attachButton.setToolTipText("Attach file");
 
         // Status label
         statusLabel = new JLabel("Online • " + currentUser.getUsername());
@@ -158,13 +155,6 @@ public class ChatFrame extends JFrame {
                 BorderFactory.createEmptyBorder(12, 15, 12, 15)));
         messageField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
 
-        // Style attach button
-        attachButton.setBackground(Color.WHITE);
-        attachButton.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Constants.BORDER_LIGHT, 1),
-                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
-        attachButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
         // Style send button
         sendButton.setBackground(Constants.PRIMARY_COLOR);
         sendButton.setForeground(Color.WHITE);
@@ -185,7 +175,6 @@ public class ChatFrame extends JFrame {
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
         buttonPanel.setOpaque(false);
-        buttonPanel.add(attachButton);
         buttonPanel.add(sendButton);
 
         inputPanel.add(messageField, BorderLayout.CENTER);
@@ -235,11 +224,27 @@ public class ChatFrame extends JFrame {
             while (clientNetwork.isConnected()) {
                 try {
                     Message message = clientNetwork.getNextMessage();
-                    messagePanel.addMessage(message);
 
-                    SwingUtilities.invokeLater(() -> {
-                        updateUserList(message);
-                    });
+                    // Check if this is a user list update message
+                    if (message.getMessageType().equals("SYSTEM") &&
+                            message.getContent().startsWith("USER_LIST_UPDATE:")) {
+
+                        SwingUtilities.invokeLater(() -> {
+                            updateUserListFromMessage(message);
+                        });
+                    }
+                    // Handle user join/leave messages
+                    else if (message.getMessageType().equals("USER_JOIN") ||
+                            message.getMessageType().equals("USER_LEAVE")) {
+
+                        SwingUtilities.invokeLater(() -> {
+                            handleUserJoinLeave(message);
+                            messagePanel.addMessage(message); // Also show in chat
+                        });
+                    } else {
+                        // Regular message
+                        messagePanel.addMessage(message);
+                    }
 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -262,12 +267,31 @@ public class ChatFrame extends JFrame {
         messageListener.start();
     }
 
-    private void updateUserList(Message message) {
+    private void updateUserListFromMessage(Message message) {
+        String content = message.getContent();
+        if (content.startsWith("USER_LIST_UPDATE:")) {
+            String userListStr = content.substring("USER_LIST_UPDATE:".length());
+            String[] usernames = userListStr.split(",");
+
+            userListModel.clear();
+
+            // Add all users except the current user to the list
+            for (String username : usernames) {
+                if (!username.trim().isEmpty() && !username.equals(currentUser.getUsername())) {
+                    userListModel.addElement(username.trim());
+                }
+            }
+
+            updateOnlineCount();
+        }
+    }
+
+    private void handleUserJoinLeave(Message message) {
         String username = message.getSender().getUsername();
 
         switch (message.getMessageType()) {
             case "USER_JOIN":
-                if (!userListModel.contains(username)) {
+                if (!username.equals(currentUser.getUsername()) && !userListModel.contains(username)) {
                     userListModel.addElement(username);
                     updateOnlineCount();
                 }
@@ -280,7 +304,9 @@ public class ChatFrame extends JFrame {
     }
 
     private void updateOnlineCount() {
-        onlineCountLabel.setText("Online • " + userListModel.size());
+        // +1 for current user
+        int totalUsers = userListModel.size() + 1;
+        onlineCountLabel.setText("Online • " + totalUsers);
     }
 
     private void disconnect() {

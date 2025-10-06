@@ -30,6 +30,9 @@ public class ClientHandler implements Runnable {
             user = (User) input.readObject();
             System.out.println("User connected: " + user.getUsername());
 
+            // Add user to server's user list
+            server.addUser(user);
+
             // Notify all clients about new user
             Message joinMessage = new Message(user, user.getUsername() + " joined the chat", "USER_JOIN");
             messageQueue.put(joinMessage);
